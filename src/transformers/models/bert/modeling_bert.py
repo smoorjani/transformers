@@ -224,7 +224,7 @@ class BertEmbeddings(nn.Module):
 
 
 class BertSelfAttention(nn.Module):
-    def __init__(self, config, position_embedding_type=None):
+    def __init__(self, config, position_embedding_type=None, attn_head_id=None):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
@@ -236,9 +236,9 @@ class BertSelfAttention(nn.Module):
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = nn.Linear(config.hidden_size, self.all_head_size)
-        self.key = nn.Linear(config.hidden_size, self.all_head_size)
-        self.value = nn.Linear(config.hidden_size, self.all_head_size)
+        self.query = nn.Linear(config.hidden_size, self.all_head_size, lookup="query."+str(attn_head_id))
+        self.key = nn.Linear(config.hidden_size, self.all_head_size, lookup="key."+str(attn_head_id))
+        self.value = nn.Linear(config.hidden_size, self.all_head_size, lookup="value."+str(attn_head_id))
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.position_embedding_type = position_embedding_type or getattr(
@@ -351,9 +351,9 @@ class BertSelfAttention(nn.Module):
 
 
 class BertSelfOutput(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, attn_head_id=None):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size, lookup="attn_output."+str(attn_head_id))
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -414,9 +414,9 @@ class BertAttention(nn.Module):
 
 
 class BertIntermediate(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_id=None):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
+        self.dense = nn.Linear(config.hidden_size, config.intermediate_size, lookup="intermediate."+str(layer_id))
         if isinstance(config.hidden_act, str):
             self.intermediate_act_fn = ACT2FN[config.hidden_act]
         else:
@@ -429,9 +429,9 @@ class BertIntermediate(nn.Module):
 
 
 class BertOutput(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_id=None):
         super().__init__()
-        self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.dense = nn.Linear(config.intermediate_size, config.hidden_size, lookup="output."+str(layer_id))
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -443,19 +443,19 @@ class BertOutput(nn.Module):
 
 
 class BertLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_id=None):
         super().__init__()
         self.chunk_size_feed_forward = config.chunk_size_feed_forward
         self.seq_len_dim = 1
-        self.attention = BertAttention(config)
+        self.attention = BertAttention(config, attn_head_id=layer_id)
         self.is_decoder = config.is_decoder
         self.add_cross_attention = config.add_cross_attention
         if self.add_cross_attention:
             if not self.is_decoder:
                 raise ValueError(f"{self} should be used as a decoder model if cross attention is added")
             self.crossattention = BertAttention(config, position_embedding_type="absolute")
-        self.intermediate = BertIntermediate(config)
-        self.output = BertOutput(config)
+        self.intermediate = BertIntermediate(config, layer_id=layer_id)
+        self.output = BertOutput(config, layer_id=layer_id)
 
     def forward(
         self,
@@ -531,7 +531,7 @@ class BertEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.layer = nn.ModuleList([BertLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layer = nn.ModuleList([BertLayer(config, layer_id=i) for i in range(config.num_hidden_layers)])
         self.gradient_checkpointing = False
 
     def forward(
