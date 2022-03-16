@@ -365,10 +365,10 @@ class BertSelfOutput(nn.Module):
 
 
 class BertAttention(nn.Module):
-    def __init__(self, config, position_embedding_type=None):
+    def __init__(self, config, position_embedding_type=None, attn_head_id=None):
         super().__init__()
-        self.self = BertSelfAttention(config, position_embedding_type=position_embedding_type)
-        self.output = BertSelfOutput(config)
+        self.self = BertSelfAttention(config, position_embedding_type=position_embedding_type, attn_head_id=attn_head_id)
+        self.output = BertSelfOutput(config, attn_head_id=attn_head_id)
         self.pruned_heads = set()
 
     def prune_heads(self, heads):
